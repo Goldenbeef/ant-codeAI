@@ -20,6 +20,7 @@ import { FileBreadcrumb } from './FileBreadcrumb';
 import { FileTree } from './FileTree';
 import { DEFAULT_TERMINAL_SIZE, TerminalTabs } from './terminal/TerminalTabs';
 import { workbenchStore } from '@/lib/stores/workbench';
+import { workspaceStore } from '@/lib/stores/workspace';
 
 interface EditorPanelProps {
   files?: FileMap;
@@ -32,6 +33,7 @@ interface EditorPanelProps {
   onFileSelect?: (value?: string) => void;
   onFileSave?: OnEditorSave;
   onFileReset?: () => void;
+  isFileSaving?: boolean;
 }
 
 const DEFAULT_EDITOR_SIZE = 100 - DEFAULT_TERMINAL_SIZE;
@@ -50,11 +52,13 @@ export const EditorPanel = memo(
     onEditorScroll,
     onFileSave,
     onFileReset,
+    isFileSaving,
   }: EditorPanelProps) => {
     renderLogger.trace('EditorPanel');
 
     const theme = useStore(themeStore);
     const showTerminal = useStore(workbenchStore.showTerminal);
+    const currentWorkspace = useStore(workspaceStore.currentWorkspace);
 
     const activeFileSegments = useMemo(() => {
       if (!editorDocument) {
@@ -98,8 +102,8 @@ export const EditorPanel = memo(
                     {activeFileUnsaved && (
                       <div className="flex gap-1 ml-auto -mr-1.5">
                         <PanelHeaderButton onClick={onFileSave}>
-                          <div className="i-ph:floppy-disk-duotone" />
-                          Save
+                        <div className={`${isFileSaving ? 'i-ph:circle-notch-duotone animate-spin' : 'i-ph:floppy-disk-duotone'}`} />
+                        {isFileSaving ? 'Saving...' : 'Save'}
                         </PanelHeaderButton>
                         <PanelHeaderButton onClick={onFileReset}>
                           <div className="i-ph:clock-counter-clockwise-duotone" />

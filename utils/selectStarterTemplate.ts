@@ -3,8 +3,13 @@ import type { ProviderInfo } from '@/types/model';
 import type { Template } from '@/types/template';
 import { STARTER_TEMPLATES } from './constants';
 import Cookies from 'js-cookie';
+import { toast } from 'react-toastify';
 
-const starterTemplateSelectionPrompt = (templates: Template[]) => `
+// Import vite-ts-sass-template files
+import viteTsSassTemplateFiles from '@/vite-ts-sass-template_files.json';
+
+
+export const starterTemplateSelectionPrompt = (templates: Template[]) => `
 You are an experienced developer who helps people choose the best starter template for their projects.
 
 Available templates:
@@ -44,15 +49,16 @@ Instructions:
 3. Follow the exact XML format
 4. Consider both technical requirements and tags
 5. If no perfect match exists, recommend the closest option
+6. The title should be an appropriate title for the project, concise and less than four words.
 
 Important: Provide only the selection tags in your response, no additional text.
 Important: Analyze the foundational UI components required for use. If more than 5 components from @radix-ui are needed, it is mandatory to use the template vite-ts-sass-template, disregarding the recommended template list.
 MOST IMPORTANT: YOU DONT HAVE TIME TO THINK JUST START RESPONDING BASED ON HUNCH 
 `;
 
-const templates: Template[] = STARTER_TEMPLATES.filter((t) => !t.name.includes('shadcn'));
+export const templates: Template[] = STARTER_TEMPLATES.filter((t) => !t.name.includes('shadcn'));
 
-const parseSelectedTemplate = (llmOutput: string): { template: string; title: string } | null => {
+export const parseSelectedTemplate = (llmOutput: string): { template: string; title: string } | null => {
   try {
     // Extract content between <templateName> tags
     const templateNameMatch = llmOutput.match(/<templateName>(.*?)<\/templateName>/);
@@ -81,7 +87,13 @@ export const selectStarterTemplate = async (options: { message: string; model: s
     method: 'POST',
     body: JSON.stringify(requestBody),
   });
+
+  if (!response.ok) {
+    toast.error('Failed to fetch response');
+  }
+
   const respJson: { text: string } = await response.json();
+
 
   const { text } = respJson;
   const selectedTemplate = parseSelectedTemplate(text);
@@ -112,7 +124,7 @@ const getGitHubRepoContent = async (
 
     // Add your GitHub token if needed
     if (token) {
-      headers.Authorization = 'token ' + token;
+      headers.Authorization = `token ${token}`;
     }
 
     // Fetch contents of the path
@@ -183,8 +195,11 @@ export async function getTemplates(templateName: string, title?: string) {
     return null;
   }
 
-  const githubRepo = template.githubRepo;
-  const files = await getGitHubRepoContent(githubRepo);
+  // const githubRepo = template.githubRepo;
+  // const files = await getGitHubRepoContent(githubRepo);
+  const files = viteTsSassTemplateFiles;
+
+  
   // const response = await fetch('/api/git/getGitHubRepoContent', {
   //   method: 'POST',
   //   body: JSON.stringify({ repoName: githubRepo }),
@@ -227,7 +242,7 @@ export async function getTemplates(templateName: string, title?: string) {
 
 
   const assistantMessage = `
-<boltArtifact id="imported-files" title="${title || 'Importing Starter Files'}" type="bundled">
+<boltArtifact id="imported-files" title="${title}" type="bundled">
 ${filesToImport.files
   .map(
     (file: any) =>

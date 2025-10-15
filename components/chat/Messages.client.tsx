@@ -1,35 +1,51 @@
 import type { Message } from 'ai';
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { classNames } from '@/utils/classNames';
 import { AssistantMessage } from './AssistantMessage';
 import { UserMessage } from './UserMessage';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { chatId } from '@/lib/persistence/useChatHistory';
+import { appId } from '@/lib/persistence/useChatHistory';
 import { toast } from 'react-toastify';
-import WithTooltip from '@/components/ui/Tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/shadui/tooltip';
 import { useStore } from '@nanostores/react';
 import { profileStore } from '@/lib/stores/profile';
 import { forwardRef } from 'react';
 import type { ForwardedRef } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/shadui/dialog';
+import { chatId } from '@/lib/persistence';
+import { useSession } from 'next-auth/react';
+import { History } from 'lucide-react';
+import { Button } from '@/components/shadui/button';
+
 
 interface MessagesProps {
   id?: string;
   className?: string;
   isStreaming?: boolean;
   messages?: Message[];
+  saveChat?: (messageId?: string, storeMessage?: boolean) => Promise<void>;
 }
 
 export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
   (props: MessagesProps, ref: ForwardedRef<HTMLDivElement> | undefined) => {
-    const { id, isStreaming = false, messages = [] } = props;
+    const { id, isStreaming = false, messages = [], saveChat } = props;
     const searchParams = useSearchParams();
     const router = useRouter();
     const profile = useStore(profileStore);
+    const [openDialog, setOpenDialog] = useState(false);
+    const [commitSha, setCommitSha] = useState<any>(null);
+    const [currentMessageId, setCurrentMessageId] = useState<string>('');
+    const { data: session } = useSession();
+    const user = session?.user;
 
-    const handleRewind = (messageId: string) => {
-      const searchParams = new URLSearchParams(location.search);
-      searchParams.set('rewindTo', messageId);
-      window.location.search = searchParams.toString();
+    const handleRewind = async (messageId: string, commitSha: any) => {
+      setCommitSha(commitSha);
+      setCurrentMessageId(messageId);
+      setOpenDialog(true);
+    };
+
+    const closeDialog = () => {
+      setOpenDialog(false);
     };
 
     const handleFork = async (messageId: string) => {
@@ -76,19 +92,19 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
               return (
                 <div
                   key={index}
-                  className={classNames('flex gap-4 p-6 w-full rounded-[calc(0.75rem-1px)]', {
+                  className={classNames('relative flex gap-4 p-6 w-full rounded-[calc(0.75rem-1px)]', {
                     'bg-bolt-elements-messages-background': isUserMessage || !isStreaming || (isStreaming && !isLast),
                     'bg-gradient-to-b from-bolt-elements-messages-background from-30% to-transparent':
                       isStreaming && isLast,
                     'mt-4': !isFirst,
                   })}
                 >
-                  {isUserMessage && (
+                  {isUserMessage &&  !message.annotations?.includes('manually_edited') && (
                     <div className="flex items-center justify-center w-[40px] h-[40px] overflow-hidden bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-500 rounded-full shrink-0 self-start">
-                      {profile?.avatar ? (
+                      {user?.image ? (
                         <img
-                          src={profile.avatar}
-                          alt={profile?.username || 'User'}
+                          src={user?.image}
+                          alt={user?.name || 'User'}
                           className="w-full h-full object-cover"
                           loading="eager"
                           decoding="sync"
@@ -100,36 +116,23 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                   )}
                   <div className="grid grid-col-1 w-full">
                     {isUserMessage ? (
-                      <UserMessage content={content} />
+                      <UserMessage content={content} annotations={message.annotations}  />
                     ) : (
                       <AssistantMessage content={content} annotations={message.annotations} />
                     )}
                   </div>
                   {!isUserMessage && (
                     <div className="flex gap-2 flex-col lg:flex-row">
-                      {messageId && (
-                        <WithTooltip tooltip="Revert to this message">
-                          <button
-                            onClick={() => handleRewind(messageId)}
-                            key="i-ph:arrow-u-up-left"
-                            className={classNames(
-                              'i-ph:arrow-u-up-left',
-                              'text-xl text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-colors',
-                            )}
-                          />
-                        </WithTooltip>
+                      {messageId && message.annotations?.find((annotation) => (annotation as { type: string }).type === 'commitSha') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 absolute top-0.5 right-0.5"
+                            onClick={() => handleRewind(messageId, message.annotations?.find((annotation) => (annotation as { type: string }).type === 'commitSha'))}
+                          >
+                        <History size={20} /> Undo
+                      </Button>
                       )}
-{/* 
-                      <WithTooltip tooltip="Fork chat from this message">
-                        <button
-                          onClick={() => handleFork(messageId)}
-                          key="i-ph:git-fork"
-                          className={classNames(
-                            'i-ph:git-fork',
-                            'text-xl text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-colors',
-                          )}
-                        />
-                      </WithTooltip> */}
                     </div>
                   )}
                 </div>
@@ -139,6 +142,41 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
         {isStreaming && (
           <div className="text-center w-full text-bolt-elements-textSecondary i-svg-spinners:3-dots-fade text-4xl mt-4"></div>
         )}
+
+            <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle className="text-gray-900 dark:text-white">Revert Chat?</DialogTitle>
+                  <DialogDescription className="mt-2 text-gray-600 dark:text-gray-400">                   
+                    <span className="mt-2">Are you sure you want to revert to this message?</span>
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="flex justify-end gap-3">
+                  <Button variant="outline" onClick={closeDialog}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={async () => {
+                       const response = await fetch('/api/revert', {
+                          method: 'POST',
+                          body: JSON.stringify({ 
+                            appName: appId.get(), 
+                            commitSha: commitSha.commitSha 
+                          }),
+                        });
+
+                        
+                        closeDialog();
+                        await saveChat?.(currentMessageId);
+                        window.location.search = searchParams.toString();
+                    }}
+                  >
+                    Revert
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
       </div>
     );
   },
